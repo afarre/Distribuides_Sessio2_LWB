@@ -10,7 +10,10 @@ public class S_LWB extends Thread {
     private DataInputStream diStreamHWB;
     private DataOutputStream doStreamHWB;
 
-    private ArrayList<LamportRequest> lamportQueue;
+    private ArrayList<LamportRequest> queue;
+    private ArrayList<LamportRequest> pendingQueue;
+
+    private SingleNonBlocking singleNonBlocking;
 
     private String process;
     private int parentPort;
@@ -25,7 +28,8 @@ public class S_LWB extends Thread {
         this.myPort = myPort;
         this.brotherPort = brotherPort;
         this.id = id;
-        lamportQueue = new ArrayList<>();
+        queue = new ArrayList<>();
+        pendingQueue = new ArrayList<>();
     }
 
     @Override
@@ -35,11 +39,14 @@ public class S_LWB extends Thread {
             connectToParent();
             doStreamHWB.writeUTF("ONLINE");
             doStreamHWB.writeUTF(process);
-            boolean connect = diStreamHWB.readBoolean();
-
-            if (connect){
+            String msg = diStreamHWB.readUTF();
+            if (msg.equals("CONNECT")){
                 System.out.println("Setting up server with port: " + myPort);
-                SingleNonBlocking singleNonBlocking = new SingleNonBlocking(this, clock, myPort, brotherPort, id, process);
+                singleNonBlocking = new SingleNonBlocking(this, clock, myPort, brotherPort, id, process);
+            }
+            boolean flag = diStreamHWB.readBoolean();
+            if (!flag){
+                assert singleNonBlocking != null;
                 singleNonBlocking.start();
             }
         } catch (ConnectException ignored) {
@@ -62,11 +69,13 @@ public class S_LWB extends Thread {
 
     private void parentAllowance() {
         try {
+            System.out.println("sendig run status");
             doStreamHWB.writeUTF("RUN STATUS");
             boolean childsDone = diStreamHWB.readBoolean();
             System.out.println("Reading childsDone = " + childsDone);
             if (childsDone){
-                diStreamHWB.readUTF();
+                String magic = diStreamHWB.readUTF();
+                System.out.println("read this magic: " + magic);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -84,43 +93,69 @@ public class S_LWB extends Thread {
     }
 
     public void addRequest(LamportRequest lamportRequest) {
-        if (!lamportQueue.contains(lamportRequest)){
-            lamportQueue.add(lamportRequest);
+        if (!queue.contains(lamportRequest)){
+            queue.add(lamportRequest);
+        }
+
+        for (LamportRequest lr : queue) {
+            System.out.println("[LAMPORT (post add)]" + lr.toString());
         }
     }
 
     public boolean checkQueue() {
 
-        //for (LamportRequest lr : lamportQueue) {
-        //   System.out.println("[LAMPORT (query)]" + lr.toString());
-        // }
+        for (LamportRequest lr : queue) {
+           System.out.println("[LAMPORT (query)]" + lr.toString());
+         }
 
         LamportRequest toBeExecuted = null;
-        for (int i = 0; i < lamportQueue.size(); i++){
-            toBeExecuted = lamportQueue.get(i);
-            for (int j = 1; j < lamportQueue.size(); j++){
-                if (lamportQueue.get(j).getClock() < toBeExecuted.getClock()){
-                    toBeExecuted = lamportQueue.get(j);
-                }else if (lamportQueue.get(j).getClock() == toBeExecuted.getClock() && lamportQueue.get(j).getId() < toBeExecuted.getId()){
-                    toBeExecuted = lamportQueue.get(j);
+        for (int i = 0; i < queue.size(); i++){
+            toBeExecuted = queue.get(i);
+            for (int j = 1; j < queue.size(); j++){
+                if (queue.get(j).getClock() < toBeExecuted.getClock()){
+                    toBeExecuted = queue.get(j);
+                }else if (queue.get(j).getClock() == toBeExecuted.getClock() && queue.get(j).getId() < toBeExecuted.getId()){
+                    toBeExecuted = queue.get(j);
                 }
             }
-            if (toBeExecuted.equals(lamportQueue.get(i))){
+            if (toBeExecuted.equals(queue.get(i))){
                 break;
             }
         }
-        //System.out.println("Lamport to be executed: " + toBeExecuted.toString());
+        System.out.println("Lamport to be executed: " + toBeExecuted.toString());
         return toBeExecuted.getProcess().equals(process);
     }
 
-    public void removeRequest(LamportRequest lamportRequest) {
-        lamportQueue.remove(lamportRequest);
+    public void removeQueueRequest(LamportRequest lamportRequest) {
+        queue.remove(lamportRequest);
+
+        for (LamportRequest lr : queue) {
+            System.out.println("[LAMPORT (post remove)]" + lr.toString());
+        }
     }
 
     public void communicateDone(String process) throws IOException {
         doStreamHWB.writeUTF("LWB DONE");
         doStreamHWB.writeUTF(process);
-        System.out.println("Sending done");
 
+    }
+
+    public void addPendingRequest(LamportRequest lamportRequest) {
+        System.out.println("Adding " + lamportRequest.toString() + " to my pending queue");
+        pendingQueue.add(lamportRequest);
+    }
+
+    public void removePendingRequest(LamportRequest lamportRequest){
+        queue.remove(lamportRequest);
+    }
+
+    public void queryPendingQueue() {
+        if (pendingQueue.size() > 0){
+            for (LamportRequest lr : pendingQueue) {
+                System.out.println("I should be answering to this request: " + lr.toString());
+                singleNonBlocking.answerPendingRequest(lr);
+            }
+            pendingQueue.clear();
+        }
     }
 }
