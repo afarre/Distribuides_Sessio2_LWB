@@ -1,3 +1,7 @@
+package socket;
+
+import model.LamportRequest;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -65,17 +69,15 @@ public class S_LWB extends Thread {
                 e.printStackTrace();
             }
         }
+        System.out.println("-- Iteració acabada --\n");
     }
 
     private void parentAllowance() {
         try {
-            System.out.println("sendig run status");
             doStreamHWB.writeUTF("RUN STATUS");
             boolean childsDone = diStreamHWB.readBoolean();
-            System.out.println("Reading childsDone = " + childsDone);
             if (childsDone){
-                String magic = diStreamHWB.readUTF();
-                System.out.println("read this magic: " + magic);
+                diStreamHWB.readUTF();
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -96,18 +98,9 @@ public class S_LWB extends Thread {
         if (!queue.contains(lamportRequest)){
             queue.add(lamportRequest);
         }
-
-        for (LamportRequest lr : queue) {
-            System.out.println("[LAMPORT (post add)]" + lr.toString());
-        }
     }
 
     public boolean checkQueue() {
-
-        for (LamportRequest lr : queue) {
-           System.out.println("[LAMPORT (query)]" + lr.toString());
-         }
-
         LamportRequest toBeExecuted = null;
         for (int i = 0; i < queue.size(); i++){
             toBeExecuted = queue.get(i);
@@ -122,37 +115,25 @@ public class S_LWB extends Thread {
                 break;
             }
         }
-        System.out.println("Lamport to be executed: " + toBeExecuted.toString());
         return toBeExecuted.getProcess().equals(process);
     }
 
     public void removeQueueRequest(LamportRequest lamportRequest) {
         queue.remove(lamportRequest);
-
-        for (LamportRequest lr : queue) {
-            System.out.println("[LAMPORT (post remove)]" + lr.toString());
-        }
     }
 
     public void communicateDone(String process) throws IOException {
         doStreamHWB.writeUTF("LWB DONE");
         doStreamHWB.writeUTF(process);
-
     }
 
     public void addPendingRequest(LamportRequest lamportRequest) {
-        System.out.println("Adding " + lamportRequest.toString() + " to my pending queue");
         pendingQueue.add(lamportRequest);
-    }
-
-    public void removePendingRequest(LamportRequest lamportRequest){
-        queue.remove(lamportRequest);
     }
 
     public void queryPendingQueue() {
         if (pendingQueue.size() > 0){
             for (LamportRequest lr : pendingQueue) {
-                System.out.println("I should be answering to this request: " + lr.toString());
                 singleNonBlocking.answerPendingRequest(lr);
             }
             pendingQueue.clear();

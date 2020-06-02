@@ -1,3 +1,5 @@
+package model;
+
 public class LamportRequest {
     private int clock;
     private String process;
@@ -23,7 +25,7 @@ public class LamportRequest {
 
     @Override
     public String toString() {
-        return "LamportRequest{" +
+        return "model.LamportRequest{" +
                 "clock=" + clock +
                 ", process='" + process + '\'' +
                 ", id=" + id +
